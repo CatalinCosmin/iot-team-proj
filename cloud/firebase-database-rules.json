@@ -1,0 +1,19 @@
+{
+  "rules": {
+    "sensors": {
+      "$deviceId": {
+        "current": {
+          ".read": true,
+          ".write": true
+        },
+        "history": {
+          ".read": true,
+          ".write": true,
+          ".indexOn": ["timestamp"]
+        },
+        ".read": true,
+        ".write": true
+      }
+    }
+  }
+}
