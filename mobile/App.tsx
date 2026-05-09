@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   ActivityIndicator,
+  LogBox,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -9,10 +10,20 @@ import {
   Text,
   View,
 } from 'react-native';
+
+// expo-notifications triggers a console.error in Expo Go (SDK 53+) about remote
+// push tokens being unavailable. We only use local notifications so this is
+// harmless — suppress the overlay before the module auto-registers.
+LogBox.ignoreLogs([
+  'expo-notifications: Android Push notifications',
+]);
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { HistoryChart } from './src/components/HistoryChart';
 import { MetricCard } from './src/components/MetricCard';
+import { SettingsModal } from './src/components/SettingsModal';
 import { useSensorData } from './src/hooks/useSensorData';
+import { useThresholds } from './src/hooks/useThresholds';
+import { useNotifications } from './src/hooks/useNotifications';
 
 function formatTime(date: Date | null) {
   if (!date) return '—';
@@ -30,6 +41,19 @@ export default function App() {
   const { current, history, loading, error, lastFetchedAt, refresh, formatChartLabel } =
     useSensorData();
   const [refreshing, setRefreshing] = React.useState(false);
+  const [settingsVisible, setSettingsVisible] = React.useState(false);
+
+  const { thresholds, saveThresholds, loaded: thresholdsLoaded } = useThresholds();
+  const { checkThresholds } = useNotifications();
+
+  const lastCheckedTimestamp = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!thresholdsLoaded || !current) return;
+    if (lastCheckedTimestamp.current === current.timestamp) return;
+    lastCheckedTimestamp.current = current.timestamp;
+    checkThresholds(current, thresholds);
+  }, [current, thresholds, thresholdsLoaded, checkThresholds]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -51,8 +75,20 @@ export default function App() {
             />
           }
         >
-          <Text style={styles.title}>IoT Sensor Monitor</Text>
-          <Text style={styles.subtitle}>Current status + history (30s updates)</Text>
+          <View style={styles.headerRow}>
+            <View style={styles.headerText}>
+              <Text style={styles.title}>IoT Sensor Monitor</Text>
+              <Text style={styles.subtitle}>Current status + history (30s updates)</Text>
+            </View>
+            <Pressable
+              style={[styles.iconBtn, thresholds.enabled && styles.iconBtnActive]}
+              onPress={() => setSettingsVisible(true)}
+              hitSlop={8}
+            >
+              <Text style={styles.iconBtnText}>⚙️</Text>
+              {thresholds.enabled && <View style={styles.activeDot} />}
+            </Pressable>
+          </View>
 
           {loading && !current ? (
             <View style={styles.center}>
@@ -75,15 +111,32 @@ export default function App() {
                   label="Temperature"
                   value={current.temperature.toFixed(1)}
                   unit="°C"
-                  accent="#f97316"
+                  accent={current.temperature > thresholds.tempMax || current.temperature < thresholds.tempMin ? '#ef4444' : '#f97316'}
                 />
                 <MetricCard
                   label="Humidity"
                   value={current.humidity.toFixed(1)}
                   unit="%"
-                  accent="#38bdf8"
+                  accent={current.humidity > thresholds.humidMax || current.humidity < thresholds.humidMin ? '#ef4444' : '#38bdf8'}
                 />
               </View>
+
+              {thresholds.enabled && (current.temperature > thresholds.tempMax || current.temperature < thresholds.tempMin || current.humidity > thresholds.humidMax || current.humidity < thresholds.humidMin) && (
+                <View style={styles.alertBanner}>
+                  <Text style={styles.alertIcon}>⚠️</Text>
+                  <View style={styles.alertBody}>
+                    <Text style={styles.alertTitle}>Threshold Alert</Text>
+                    <Text style={styles.alertText}>
+                      {[
+                        current.temperature > thresholds.tempMax && `Temp ${current.temperature.toFixed(1)}°C > ${thresholds.tempMax}°C max`,
+                        current.temperature < thresholds.tempMin && `Temp ${current.temperature.toFixed(1)}°C < ${thresholds.tempMin}°C min`,
+                        current.humidity > thresholds.humidMax && `Humidity ${current.humidity.toFixed(1)}% > ${thresholds.humidMax}% max`,
+                        current.humidity < thresholds.humidMin && `Humidity ${current.humidity.toFixed(1)}% < ${thresholds.humidMin}% min`,
+                      ].filter(Boolean).join('\n')}
+                    </Text>
+                  </View>
+                </View>
+              )}
 
               <View style={styles.infoCard}>
                 <InfoRow label="Device" value={current.deviceId} />
@@ -134,6 +187,13 @@ export default function App() {
             <Text style={styles.buttonText}>Refresh now</Text>
           </Pressable>
         </ScrollView>
+
+        <SettingsModal
+          visible={settingsVisible}
+          thresholds={thresholds}
+          onSave={saveThresholds}
+          onClose={() => setSettingsVisible(false)}
+        />
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -158,6 +218,16 @@ const styles = StyleSheet.create({
     gap: 16,
     flexGrow: 1,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  headerText: {
+    flex: 1,
+    gap: 4,
+  },
   title: {
     color: '#f8fafc',
     fontSize: 28,
@@ -166,7 +236,61 @@ const styles = StyleSheet.create({
   subtitle: {
     color: '#64748b',
     fontSize: 13,
-    marginTop: -8,
+  },
+  iconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#1e293b',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconBtnActive: {
+    backgroundColor: '#1e3a5f',
+    borderWidth: 1,
+    borderColor: '#2563eb',
+  },
+  iconBtnText: {
+    fontSize: 20,
+  },
+  activeDot: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#22c55e',
+    borderWidth: 1.5,
+    borderColor: '#0f172a',
+  },
+  alertBanner: {
+    backgroundColor: '#450a0a',
+    borderRadius: 14,
+    padding: 16,
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#7f1d1d',
+  },
+  alertIcon: {
+    fontSize: 20,
+    marginTop: 1,
+  },
+  alertBody: {
+    flex: 1,
+    gap: 4,
+  },
+  alertTitle: {
+    color: '#fecaca',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  alertText: {
+    color: '#fca5a5',
+    fontSize: 13,
+    lineHeight: 20,
   },
   sectionTitle: {
     color: '#e2e8f0',

@@ -16,8 +16,8 @@
 
 // ============ EDIT THESE VALUES ============
 
-#define WIFI_SSID "Duba 9 Filaj DIICOT"
-#define WIFI_PASSWORD "parolaparola123"
+#define WIFI_SSID ""
+#define WIFI_PASSWORD ""
 
 #define DHT_PIN 4
 #define DHT_TYPE DHT11

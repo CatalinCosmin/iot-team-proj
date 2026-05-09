@@ -9,3 +9,13 @@ export type SensorReading = {
 export type HistoryPoint = SensorReading & {
   id: string;
 };
+
+export type ThresholdSettings = {
+  enabled: boolean;
+  tempMin: number;
+  tempMax: number;
+  humidMin: number;
+  humidMax: number;
+  /** Cooldown in minutes between repeated alerts for the same threshold */
+  cooldownMinutes: number;
+};
