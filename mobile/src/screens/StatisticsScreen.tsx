@@ -114,22 +114,52 @@ export function StatisticsScreen({ history, loading, onRefresh }: Props) {
     setRefreshing(false);
   };
 
-  const windowDef = TIME_WINDOWS.find((w) => w.key === activeWindow)!;
-
+  // Use the string key (primitive) as the memo dependency — avoids object-reference
+  // stability surprises that can silently prevent the memo from re-running.
   const filtered = useMemo(() => {
-    if (!windowDef.seconds) return history;
-    const nowSec = Date.now() / 1000;
+    const windowSec = TIME_WINDOWS.find((w) => w.key === activeWindow)?.seconds ?? null;
+    if (!windowSec) return history;
+    const cutoffSec = Date.now() / 1000 - windowSec;
     return history.filter((p) => {
+      // Only filter points that carry a real wall-clock timestamp
       if (p.timestamp > 1_700_000_000) {
-        return nowSec - p.timestamp <= windowDef.seconds!;
+        return p.timestamp >= cutoffSec;
       }
-      // Uptime-based timestamps: always include (no wall-clock to compare)
+      // Uptime-based timestamps (NTP not synced): always include
       return true;
     });
-  }, [history, windowDef]);
+  }, [history, activeWindow]);
 
   const tempStats = useMemo(() => computeStats(filtered, 'temperature'), [filtered]);
   const humidStats = useMemo(() => computeStats(filtered, 'humidity'), [filtered]);
+
+  // Pre-compute point counts for every window so we can show them on the pills
+  const windowCounts = useMemo(() => {
+    const nowSec = Date.now() / 1000;
+    const result: Record<TimeWindowKey, number> = { '1H': 0, '24H': 0, '7D': 0, ALL: 0 };
+    for (const w of TIME_WINDOWS) {
+      if (!w.seconds) {
+        result[w.key] = history.length;
+      } else {
+        const cutoff = nowSec - w.seconds;
+        result[w.key] = history.filter(
+          (p) => p.timestamp <= 1_700_000_000 || p.timestamp >= cutoff
+        ).length;
+      }
+    }
+    return result;
+  }, [history]);
+
+  // Date-range label for the filtered slice
+  const rangeLabel = useMemo(() => {
+    const real = filtered.filter((p) => p.timestamp > 1_700_000_000);
+    if (real.length === 0) return null;
+    const earliest = new Date(Math.min(...real.map((p) => p.timestamp)) * 1000);
+    const latest = new Date(Math.max(...real.map((p) => p.timestamp)) * 1000);
+    const fmt = (d: Date) =>
+      d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return `${fmt(earliest)} → ${fmt(latest)}`;
+  }, [filtered]);
 
   return (
     <ScrollView
@@ -145,18 +175,36 @@ export function StatisticsScreen({ history, loading, onRefresh }: Props) {
       {/* ── Time window selector ── */}
       <SectionHeader title="Time Window" />
       <View style={styles.pillRow}>
-        {TIME_WINDOWS.map((w) => (
-          <Pressable
-            key={w.key}
-            style={[styles.pill, activeWindow === w.key && styles.pillActive]}
-            onPress={() => setActiveWindow(w.key)}
-          >
-            <Text style={[styles.pillText, activeWindow === w.key && styles.pillTextActive]}>
-              {w.label}
-            </Text>
-          </Pressable>
-        ))}
+        {TIME_WINDOWS.map((w) => {
+          const count = windowCounts[w.key];
+          const isActive = activeWindow === w.key;
+          return (
+            <Pressable
+              key={w.key}
+              style={[styles.pill, isActive && styles.pillActive]}
+              onPress={() => setActiveWindow(w.key)}
+            >
+              <Text style={[styles.pillText, isActive && styles.pillTextActive]}>
+                {w.label}
+              </Text>
+              <View style={[styles.pillBadge, isActive && styles.pillBadgeActive]}>
+                <Text style={[styles.pillBadgeText, isActive && styles.pillBadgeTextActive]}>
+                  {count}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
       </View>
+
+      {/* ── Filtered range info ── */}
+      {rangeLabel && (
+        <View style={styles.rangeRow}>
+          <Text style={styles.rangeIcon}>🕐</Text>
+          <Text style={styles.rangeLabel} numberOfLines={1}>{rangeLabel}</Text>
+          <Text style={styles.rangeCount}>{filtered.length} readings</Text>
+        </View>
+      )}
 
       {filtered.length === 0 ? (
         <View style={styles.noData}>
@@ -274,7 +322,10 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   pill: {
-    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: '#1e293b',
@@ -292,6 +343,47 @@ const styles = StyleSheet.create({
   },
   pillTextActive: {
     color: '#fff',
+  },
+  pillBadge: {
+    backgroundColor: '#0f172a',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    minWidth: 22,
+    alignItems: 'center',
+  },
+  pillBadgeActive: {
+    backgroundColor: '#1d4ed8',
+  },
+  pillBadgeText: {
+    color: '#475569',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  pillBadgeTextActive: {
+    color: '#bfdbfe',
+  },
+  rangeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#1e293b',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  rangeIcon: {
+    fontSize: 12,
+  },
+  rangeLabel: {
+    color: '#94a3b8',
+    fontSize: 11,
+    flex: 1,
+  },
+  rangeCount: {
+    color: '#38bdf8',
+    fontSize: 11,
+    fontWeight: '700',
   },
   statsRow: {
     flexDirection: 'row',

@@ -75,8 +75,8 @@ export function HistoryChart({
           color: (opacity = 1) => `rgba(148, 163, 184, ${opacity * 0.12})`,
           labelColor: () => '#94a3b8',
           propsForDots: {
-            r: '5',
-            strokeWidth: '2.5',
+            r: '3',
+            strokeWidth: '1.5',
             stroke: color,
             fill: '#0f172a',
           },
