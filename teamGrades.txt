@@ -1,0 +1,1 @@
+Luchian Eliza-Raluca 10/10 - continued work on the app, developed new features like alerts, improved analytics on companion app, improved ESP-32 -> Firebase integration, created the documentation and the video
