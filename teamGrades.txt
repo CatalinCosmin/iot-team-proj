@@ -1,0 +1,2 @@
+Grigoriu Cosmin-Catalin 10/10 - worked on initial setup, developed base features for companion app, wired the hardware, ESP32 -> Firebase integration, created the schematics with Fritzing
+Luchian Eliza-Raluca 10/10 - continued work on the app, developed new features like alerts, improved analytics on companion app, improved ESP-32 -> Firebase integration, created the documentation and the video
