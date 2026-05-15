@@ -1,113 +1,257 @@
-# ESP32 Temp/Humidity → Cloud → React Native
+# 🌡️ Smart Environment Monitor — IoT Cloud Dashboard
 
-End-to-end IoT demo: an ESP32 reads a DHT22 sensor, uploads readings to **Firebase Realtime Database**, and a **React Native (Expo)** app displays live metrics from the cloud.
+The Smart Environment Monitor is a full-stack IoT system that collects real-time ambient temperature and humidity data using an ESP32 microcontroller and a DHT11 sensor, then streams the readings to Firebase Realtime Database over a secured Wi-Fi connection. A cross-platform mobile application built with React Native (Expo) continuously polls the cloud database and presents the live sensor data to the user through an interactive dashboard. The system supports historical data visualization through line charts and hourly heatmaps, allowing users to identify trends across configurable time windows (1 hour, 24 hours, 7 days, or all available history). Users can define custom temperature and humidity threshold ranges directly inside the app, and receive local push notifications when conditions exceed those limits — with a configurable cooldown period to prevent alert fatigue.
 
-## Architecture
+This project demonstrates the full IoT pipeline: from hardware sensing and Wi-Fi connectivity, through cloud storage with structured security rules, to a polished mobile interface with real-time feedback and user-defined alerting.
 
+---
+
+## 🎥 Demo
+
+*(Upload your demo video to Teams and link it here)*
+
+---
+
+## 🔌 Schematics
+
+<img alt="Hardware Diagram" src="./IoT-hardware-diagram.png" />
+
+---
+
+## 📦 Pre-requisites
+
+### Hardware Components
+
+- **ESP32 Development Board (ESP-32S WiFi)**  
+  https://www.espressif.com/en/products/socs/esp32
+
+- **DHT11 Temperature and Humidity Sensor Module**  
+  https://arduinogetstarted.com/tutorials/arduino-dht11
+
+- **Breadboard**  
+  https://busboard.com/BB830T
+
+- **Jumper Wires (Male-Male / Male-Female)**  
+  https://iotzone.in/blog/jumper-wire-types-uses-pin-configuration-and-complete-guide-for-electronics-projects
+
+---
+
+### Software Components
+
+#### Firmware
+
+- **Arduino IDE**  
+  https://www.arduino.cc/en/software/
+
+- **ESP32 Board Package (Espressif Systems)**  
+  https://docs.espressif.com/projects/arduino-esp32/en/latest/installing.html
+
+- **DHT Sensor Library (Adafruit)**  
+  https://www.arduinolibraries.info/libraries/dht-sensor-library
+
+- **Adafruit Unified Sensor Library**  
+  https://docs.arduino.cc/libraries/adafruit-unified-sensor/
+
+- **ArduinoJson by Benoit Blanchon (v6.x)**  
+  https://arduinojson.org/
+
+#### Cloud
+
+- **Firebase Realtime Database**  
+  https://firebase.google.com/products/realtime-database
+
+#### Mobile App
+
+- **Node.js (v18+)**  
+  https://nodejs.org/
+
+- **Expo SDK (v54)**  
+  https://docs.expo.dev/
+
+- **Expo Go** (for running on a physical device without a build)  
+  https://expo.dev/go
+
+- **react-native-chart-kit** — line charts and data visualization  
+  https://github.com/indiespirit/react-native-chart-kit
+
+- **expo-notifications** — local push notifications  
+  https://docs.expo.dev/versions/latest/sdk/notifications/
+
+- **@react-native-async-storage/async-storage** — persistent threshold settings  
+  https://react-native-async-storage.github.io/async-storage/
+
+---
+
+## ⚙️ Setup and Build
+
+### 1. Firebase Setup (Cloud)
+
+1. Go to [Firebase Console](https://console.firebase.google.com/) and create a new project.
+2. Navigate to **Build → Realtime Database** and click **Create Database**.
+3. Choose a region (e.g. `europe-west1`) and start in **Test mode** for development.
+4. Copy your database URL — it looks like:  
+   `https://YOUR_PROJECT_ID-default-rtdb.europe-west1.firebasedatabase.app`
+5. Go to **Realtime Database → Rules** and replace the existing rules with the contents of `cloud/firebase-database-rules.json` from this repository.
+
+---
+
+### 2. Install ESP32 Board Support
+
+1. Open Arduino IDE.
+2. Go to **File → Preferences**.
+3. In **Additional Board Manager URLs**, add:  
+   `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`
+4. Go to **Tools → Board → Boards Manager**.
+5. Search for **esp32** and install **ESP32 by Espressif Systems**.
+
+---
+
+### 3. Install Required Arduino Libraries
+
+Open **Sketch → Include Library → Manage Libraries** and install the following:
+
+- **DHT sensor library** — by Adafruit
+- **Adafruit Unified Sensor** — by Adafruit
+- **ArduinoJson** — by Benoit Blanchon (v6.x)
+
+---
+
+### 4. Hardware Connections
+
+#### ⚡ Power Rails
+- ESP32 **3.3V** → Breadboard **+** rail  
+- ESP32 **GND** → Breadboard **−** rail
+
+#### 🌡️ DHT11 Temperature & Humidity Sensor
+| DHT11 Pin | Connects to |
+|-----------|-------------|
+| VCC       | + rail (3.3 V) |
+| GND       | − rail |
+| DATA      | GPIO **4** |
+
+---
+
+### 5. Configure the Firmware
+
+1. Open `firmware/esp32_temp_humidity/esp32_temp_humidity.ino` in Arduino IDE.
+2. Edit the **EDIT THESE VALUES** section at the top of the file:
+
+```cpp
+#define WIFI_SSID        "your_network_name"
+#define WIFI_PASSWORD    "your_network_password"
+#define FIREBASE_HOST    "https://YOUR_PROJECT_ID-default-rtdb.europe-west1.firebasedatabase.app"
+#define FIREBASE_AUTH    ""          // leave empty if rules are open
 ```
-[DHT22] ──GPIO──► [ESP32 WiFi] ──HTTPS PUT──► [Firebase Realtime DB]
-                                                      ▲
-                                                      │ HTTPS GET (poll)
-                                               [React Native App]
+
+3. If you are using a **DHT22** instead of a DHT11, change:
+
+```cpp
+#define DHT_TYPE DHT22
 ```
 
-Bluetooth on the ESP32 is not used for the app link; WiFi + cloud keeps the phone and device independent (works on any network).
+---
 
-## Hardware
+### 6. Upload the Firmware
 
-| Part | Notes |
-|------|--------|
-| ESP32 dev board | Any ESP32 with WiFi |
-| DHT22 (or DHT11) | Data pin → **GPIO 4** (default in sketch), VCC 3.3V, GND |
+1. Connect the ESP32 to your computer via USB.
+2. In Arduino IDE, go to **Tools → Board** and select **ESP32 Dev Module**.
+3. Go to **Tools → Port** and select the correct COM port.
+4. Click **Upload** (→ arrow button).
+5. If the upload does not start, hold the **BOOT** button on the ESP32 until uploading begins.
 
-## 1. Firebase setup (cloud)
+---
 
-1. Create a project at [Firebase Console](https://console.firebase.google.com/).
-2. Enable **Realtime Database** (not Firestore). Choose a region and start in **test mode** for development.
-3. Copy your database URL, e.g. `https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com`.
-4. In **Realtime Database → Rules**, paste the rules from `cloud/firebase-database-rules.json` (open read/write for class demos only; lock down for production).
-5. Optional: add a 10–15 cm pull-up resistor (4.7kΩ) on the DHT data line if reads are unstable.
+### 7. Configure the Mobile App
 
-## 2. ESP32 firmware (Arduino IDE)
+1. Navigate to the `mobile/` folder.
+2. Copy the example config file:
 
-### Install board support
+```bash
+cp mobile/src/config.example.ts mobile/src/config.ts
+```
 
-1. **File → Preferences → Additional Board Manager URLs**  
-   Add: `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`
-2. **Tools → Board → Boards Manager** → install **esp32** by Espressif.
-3. Select your board: **Tools → Board → ESP32 Dev Module** (or your exact module).
+3. Open `mobile/src/config.ts` and set your Firebase URL and sensor path to match the firmware:
 
-### Install libraries (Sketch → Include Library → Manage Libraries)
+```ts
+export const FIREBASE_HOST = "https://YOUR_PROJECT_ID-default-rtdb.europe-west1.firebasedatabase.app";
+export const SENSOR_PATH   = "sensors/esp32-01";
+```
 
-- **DHT sensor library** (Adafruit)
-- **Adafruit Unified Sensor**
-- **ArduinoJson** by Benoit Blanchon (6.x)
+---
 
-### Configure and upload
-
-1. Open `firmware/esp32_temp_humidity/esp32_temp_humidity.ino` in Arduino IDE (one file only).
-2. Edit the **EDIT THESE VALUES** section at the top (WiFi, Firebase URL, DHT type).
-3. Upload to the ESP32.
-4. Open **Serial Monitor** at **115200** baud. You should see WiFi connect and `Firebase PUT 200`.
-
-## 3. Mobile app (React Native / Expo)
-
-### Prerequisites
-
-- [Node.js](https://nodejs.org/) 18+
-- [Expo Go](https://expo.dev/go) on your phone (easiest), or Android Studio / Xcode for emulators
-
-### Run
+### 8. Install Mobile App Dependencies
 
 ```bash
 cd mobile
 npm install
 ```
 
-Edit `mobile/src/config.ts` — use the **same** `FIREBASE_HOST` and `SENSOR_PATH` as in the `.ino` file.
+---
+
+## ▶️ Running
+
+### Running the Firmware
+
+1. After uploading, the ESP32 starts automatically.
+2. Open **Serial Monitor** in Arduino IDE at baud rate **115200**.
+3. You should see the board connect to Wi-Fi, sync NTP time, and then output readings every 30 seconds:
+
+```
+Connecting to WiFi: your_network_name
+WiFi connected. IP: 192.168.x.x
+NTP time synced (UTC)
+Sensor: 24.5 C, 48.0 %
+Firebase POST /history -> 200 | {"deviceId":"esp32-01","temperature":24.5,"humidity":48.0,"timestamp":1747343400}
+Firebase PUT /current -> 200 | ...
+```
+
+---
+
+### Running the Mobile App
+
+1. Make sure your phone and computer are on the **same Wi-Fi network** (LAN mode).
+2. Start the Expo development server:
 
 ```bash
+cd mobile
 npm start
 ```
 
-Scan the QR code with Expo Go. Pull down to refresh; the app polls Firebase every 3 seconds.
+3. A QR code will appear in the terminal.
+4. On Android, open the **Expo Go** app and scan the QR code.  
+   On iOS, scan the QR code with the **Camera** app, which will open Expo Go.
+5. The app will load on your device.
 
-## JSON payload shape
+---
 
-The ESP32 writes one object at `sensors/esp32-01`:
+### Using the App
 
-```json
-{
-  "deviceId": "esp32-01",
-  "temperature": 23.4,
-  "humidity": 51.2,
-  "timestamp": 120
-}
-```
+Once the app is running:
 
-`timestamp` is seconds since the ESP32 booted (not wall-clock time). The app shows “Last sync” as when data was fetched from Firebase.
+1. **Dashboard tab** — shows the latest temperature and humidity readings from Firebase, a live history chart, and a list of recent readings.
+2. **Statistics tab** — shows min/avg/max values for selectable time windows (1H / 24H / 7D / ALL) and hourly heatmaps.
+3. **Settings (gear icon)** — configure temperature and humidity alert thresholds and a cooldown period to avoid repeated notifications.
+4. **Pull down** to manually refresh the data at any time; the app also polls Firebase automatically every **5 seconds**.
+5. **Push notifications** are sent when a sensor reading crosses a configured threshold. A dot indicator appears on the Statistics tab to flag active threshold violations.
 
-## Troubleshooting
+---
 
-| Issue | What to check |
-|-------|----------------|
-| DHT read failed | Wiring, 3.3V, GPIO pin in `config.h`, DHT11 vs DHT22 |
-| WiFi failed | 2.4 GHz network (ESP32 often cannot use 5 GHz-only SSIDs) |
-| Firebase PUT 401/403 | Database rules; auth token if you enabled auth |
-| App shows no data | Same `FIREBASE_HOST` and path in firmware and app; ESP32 Serial shows 200 |
-| HTTPS errors on ESP32 | `client.setInsecure()` is used for demo TLS; for production, add root CA |
-| DHT read failed | Set `DHT_TYPE` to `DHT11` or `DHT22` to match your sensor |
+## 📊 Project Features
 
-## Security (production)
+- Real-time temperature and humidity monitoring via DHT11 + ESP32
+- Cloud sync to Firebase Realtime Database (every 30 seconds)
+- Mobile dashboard with live metrics and history line chart
+- Statistics screen with time-window filtering and hourly heatmaps
+- User-defined threshold alerts with local push notifications and configurable cooldown
+- Persistent settings stored on-device with AsyncStorage
+- Non-blocking Wi-Fi management and NTP time synchronization on the ESP32
 
-- Do not leave Firebase rules open to the world.
-- Use Firebase Authentication or signed tokens for writes.
-- Prefer device-specific paths and rate limits.
+---
 
-## Project layout
+## 🚀 Future Improvements
 
-```
-firmware/esp32_temp_humidity/esp32_temp_humidity.ino   Single Arduino sketch
-mobile/                         Expo React Native app
-cloud/firebase-database-rules.json
-```
+- Authenticated Firebase access (Firebase Auth or signed tokens)
+- Multiple device support and device selection in the app
+- RGB LED indicator on the hardware for at-a-glance status
+- Cloud data export (CSV / JSON)
+- Use of a more accurate sensor (DHT22 or SHT31)
